@@ -1,4 +1,5 @@
 let AWS = require('aws-sdk');
+let uniqueString = require('unique-string');
 
 AWS.config.update({
 	region: "us-west-2",
@@ -98,7 +99,8 @@ let CreateTables = () => {
  * }
  */
 let InsertPlayer = (playerInfo) => {
-	const param = {
+	const rnd = uniqueString();
+	const params = {
 		TableName: 'Players',
 		Item: {
 			"WorkerID": playerInfo.WorkerID,
@@ -106,21 +108,23 @@ let InsertPlayer = (playerInfo) => {
 			"Gender": playerInfo.Gender,
 			"Education": playerInfo.Education,
 			"Country": playerInfo.Country,
+			"ValidationCode": rnd,
 			"Bonus": "noBonus"
 		},
 		ConditionExpression: 'attribute_not_exists(WorkerID)'
 	}
+	console.log(params);
 	return new Promise((resolve, reject) => {
-		docClient.put(param, (err, data) => {
+		docClient.put(params, (err, data) => {
 			if (err) reject(err);
-			else resolve(data);
+			else resolve(rnd);
 		})
 	});
 }
 
 /** Insert log and answers of player in this instance. */
 let InsertInstanceData = (instance_data) => {
-	const param = {
+	const params = {
 		TableName: `Scenarios_Data`,
 		Item: {
 			WorkerID: instance_data.WorkerID,
@@ -132,7 +136,7 @@ let InsertInstanceData = (instance_data) => {
 	};
 
 	return new Promise((resolve, reject) => {
-		docClient.put(param, (err, data) => {
+		docClient.put(params, (err, data) => {
 			if (err) reject(err);
 			else resolve(data);
 		})
@@ -151,13 +155,36 @@ let GetQuestions = () => {
 	});
 }
 
-// let GetBonusCode = function (WorkerID) {
-// 	// TODO: generate new bonus code for the player, save it in his DB and return the code to the player
-// }
+let GetValidationCode = (WorkerID) => {
+	const params = {
+		TableName: 'Players',
+		Key: { WorkerID: WorkerID }
+	};
+	console.log(params);
+	return new Promise((resolve, reject) => {
+		docClient.get(params, (err, data) => {
+			console.log('err', err);
+			console.log('data', data);
+			if (err) reject(err);
+			else {
+				if (isEmpty(data)) reject("WorkerID Not Found");
+				else resolve(resolve(data.Item.ValidationCode))
+			}
+		})
+	});
+}
 
+let isEmpty = (obj) => {
+    for(var key in obj) {
+        if(obj.hasOwnProperty(key))
+            return false;
+    }
+    return true;
+}
 module.exports = {
 	CreateTables,
 	InsertPlayer,
 	InsertInstanceData,
-	GetQuestions
-}; //, GetBonusCode };
+	GetQuestions,
+	GetValidationCode
+};

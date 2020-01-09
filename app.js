@@ -77,7 +77,10 @@ let verifyInstanceObject = [
     min: 1,
     max: 3
   }),
-  //check('QnsAns.*').optional(this.options: {false})
+];
+
+let verifyValidatinObjects = [
+  check(['WorkerID', 'Code'], 'Not Exist').exists()
 ];
 
 // TODO: remove this hello world after develop!
@@ -97,8 +100,8 @@ app.post('/players', verifyPlayerObject, (req, res) => {
 
   rushHourDB.InsertPlayer(req.body)
     .then(result => {
-      console.log(`New player inserted.`, result);
-      res.sendStatus(201);
+      console.log(`New player inserted. Validation code: `, result);
+      res.status(201).json({ ValidationCode: result });
     })
     .catch(error => {
       console.log('Error - New player not inserted to DB.', error);
@@ -112,6 +115,7 @@ app.post('/players', verifyPlayerObject, (req, res) => {
 
 
 /** Accept the game instance log and {<question, answers>} with WorkerID id and save it to DB */
+// TODO: add validation for question
 app.post('/player/instance_data', verifyInstanceObject, (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -119,7 +123,6 @@ app.post('/player/instance_data', verifyInstanceObject, (req, res) => {
       errors: errors.array()
     });
   }
-  
   rushHourDB.InsertInstanceData(req.body)
     .then(result => {
       console.log(`Instance data inserted.`, result);
@@ -145,6 +148,24 @@ app.get('/Questions', (req, res) => {
       res.status(500).send(err);
     });
 });
+
+
+
+app.get('/Validation', (req, res) => {
+  rushHourDB.GetValidationCode(req.query.WorkerID)
+  .then((code) => {
+    if (req.query.Code !== code) {
+      res.sendStatus(400);
+    } else {
+      res.sendStatus(200);
+    }
+    
+  }).catch((err) => {
+    if (err === 'WorkerID Not Found') {
+      res.res.status(400).send(err);
+    } else res.status(500).send(err);
+  });
+})
 
 /** Return the user a bonus code. This code will enable him to recieve a bonus at MTurk. */
 // app.get('/getPlayerBonusCode', (req, res) => {
