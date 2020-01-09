@@ -77,7 +77,7 @@ let verifyInstanceObject = [
     min: 1,
     max: 3
   }),
-  check('QnsAns.*').optional(this.options: {false})
+  //check('QnsAns.*').optional(this.options: {false})
 ];
 
 // TODO: remove this hello world after develop!
