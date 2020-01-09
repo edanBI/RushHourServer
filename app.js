@@ -69,13 +69,15 @@ let verifyPlayerObject = [
 ];
 
 let verifyInstanceObject = [
-  check(['WorkerID', 'InstanceNumber', 'Log', 'QnsAns'], 'Not Exist').exists(),
-  check('InstanceNumber').isInt({
+  check(['WorkerID', 'InstanceIndex', 'Log', 'QnsAns'], 'Not Exist').exists(),
+  check(['Log.undo', 'Log.restart', 'Log.Time'], 'Log Field Not Exist').exists(),
+  check(['Log.undo', 'Log.restart', 'Log.Time'], 'Log Field Empty').notEmpty(),
+  check('Log.Time').matches('^((?:(?:0)[0-9](?:\:)[0-5][0-9])|(?:(?:10\:00)))$'),
+  check('InstanceIndex').isInt({
     min: 1,
     max: 3
   }),
-  check('Log').contains('undo', 'restart', 'Time'),
-  check('QnsAns').notEmpty()
+  check('QnsAns.*').optional(this.options: {false})
 ];
 
 // TODO: remove this hello world after develop!
@@ -117,26 +119,34 @@ app.post('/player/instance_data', verifyInstanceObject, (req, res) => {
       errors: errors.array()
     });
   }
+  
   rushHourDB.InsertInstanceData(req.body)
-  .then(result => {
-    console.log(`Instance data inserted.`, result);
-    res.sendStatus(201);
-  })
-  .catch(error => {
-    res.status(err.statusCode).send(error.message);
-  })
+    .then(result => {
+      console.log(`Instance data inserted.`, result);
+      res.sendStatus(201);
+    })
+    .catch(error => {
+      console.log(error);
+      res.status(error.statusCode).send(error.message);
+    })
+});
+
+app.get('/Questions', (req, res) => {
+  rushHourDB.GetQuestions()
+    .then((result) => {
+      let ans = new Array();
+      result.Items.forEach(elem => {
+        ans.push(elem.Question.S);
+      });
+      res.status(200).send(ans);
+    })
+    .catch((err) => {
+      console.log(err);
+      res.status(500).send(err);
+    });
 });
 
 /** Return the user a bonus code. This code will enable him to recieve a bonus at MTurk. */
 // app.get('/getPlayerBonusCode', (req, res) => {
   
 // });
-
-// let ValidateRequestErrors = (req) => {
-//   const errors = validationResult(req);
-//   if (!errors.isEmpty()) {
-//     return res.status(422).json({
-//       errors: errors.array()
-//     });
-//   }
-// }

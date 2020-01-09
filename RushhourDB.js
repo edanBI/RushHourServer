@@ -4,11 +4,12 @@ AWS.config.update({
 	region: "us-west-2",
 	endpoint: "http://localhost:8000"
 });
+let dynamodb = new AWS.DynamoDB( { apiVersion: '2012-08-10' } );
+let docClient = new AWS.DynamoDB.DocumentClient( { apiVersion: '2012-08-10' } );
+let converter = AWS.DynamoDB.Converter;
+let questionsIDCounter = 0;
 
-let dynamodb = new AWS.DynamoDB({
-	apiVersion: '2012-08-10'
-});
-let createTableCallback = function (err, data) {
+let createTableCallback = (err, data) => {
 	if (err) {
 		console.error("Unable to create table. Error JSON:", JSON.stringify(err, null, 2));
 	} else {
@@ -16,21 +17,20 @@ let createTableCallback = function (err, data) {
 	}
 };
 
-// TODO: add a table for questions
-
 /** 
  * Create all tables. One for players and a table for each game instance data of each player.
  * If tables exist, do nothing.
  */
-let CreateTables = function () {
+let CreateTables = () => {
 	dynamodb.listTables(function (err, data) {
 		if (err) {
 			console.error(`Fail to list tables. ${err}`);
 			return;
 		} else {
 			console.log(`Tables Exist: ${data.TableNames}`);
+			// Create Players Table
 			if (!data.TableNames.includes('Players')) {
-				let playersTableSchema = {
+				let params = {
 					TableName: "Players",
 					KeySchema: [{
 						AttributeName: "WorkerID",
@@ -41,36 +41,53 @@ let CreateTables = function () {
 						AttributeType: "S"
 					}],
 					ProvisionedThroughput: {
-						ReadCapacityUnits: 10, // TODO check this values
+						ReadCapacityUnits: 10,
 						WriteCapacityUnits: 10
 					}
 				}
-				dynamodb.createTable(playersTableSchema, createTableCallback);
+				dynamodb.createTable(params, createTableCallback);
 				console.log('Players table created.');
 			} else console.log('Players table already exist.');
-			for (let i = 1; i < 4; i++) {
-				if (!data.TableNames.includes(`Scenario_${i}_data`)) {
-					let scenario_i_DataTable = {
-						TableName: `Scenario_${i}_data`,
-						KeySchema: [{
-							AttributeName: "WorkerID",
-							KeyType: "HASH"
-						}],
-						AttributeDefinitions: [{
-							AttributeName: "WorkerID",
-							AttributeType: "S"
-						}],
-						ProvisionedThroughput: {
-							ReadCapacityUnits: 10, // TODO check this values
-							WriteCapacityUnits: 10
-						}
-					};
-					dynamodb.createTable(scenario_i_DataTable, createTableCallback);
-					console.log('Players table created.');
-				} else console.log(`Scenario_${i}_data table already exist.`);
-			}
+			// Create Scenarios Data Table
+			if (!data.TableNames.includes(`Scenarios_Data`)) {
+				let params = {
+					TableName: `Scenarios_Data`,
+					KeySchema: [
+						{AttributeName: "WorkerID", KeyType: "HASH"},
+						{AttributeName: "InstanceIndex", KeyType: "RANGE"}
+					],
+					AttributeDefinitions: [
+						{ AttributeName: "WorkerID", AttributeType: "S" },
+						{ AttributeName: "InstanceIndex", AttributeType: "N" },
+					],
+					ProvisionedThroughput: {
+						ReadCapacityUnits: 10,
+						WriteCapacityUnits: 10
+					}
+				};
+				dynamodb.createTable(params, createTableCallback);
+				console.log('Scenarios_Data table created.');
+			} else console.log('Scenario_Data table already exist.');
+			// Create Questions Table
+			if (!data.TableNames.includes('Questions')) {
+				let params = {
+					TableName: 'Questions',
+					KeySchema: [
+						{AttributeName: "ID", KeyType: "HASH"},
+					],
+					AttributeDefinitions: [
+						{ AttributeName: "ID", AttributeType: "N" }
+					],
+					ProvisionedThroughput: {
+						ReadCapacityUnits: 10,
+						WriteCapacityUnits: 10
+					}
+				};
+				dynamodb.createTable(params, createTableCallback);
+				console.log('Questions Table Created.');
+			} else console.log('Questions Table Already Exist.');
 		}
-		console.log(`All Tables are Ready.`);
+		console.log(`All Tables Ready.`);
 	});
 };
 
@@ -80,43 +97,57 @@ let CreateTables = function () {
  * 		...
  * }
  */
-let InsertPlayer = function (playerInfo) {
+let InsertPlayer = (playerInfo) => {
 	const param = {
 		TableName: 'Players',
 		Item: {
-			"WorkerID": { "S": `${playerInfo.WorkerID}` },
-			"Age": { "N": playerInfo.Age },
-			"Gender": { "S": `${playerInfo.Gender}` },
-			"Education": { "S": `${playerInfo.Education}` },
-			"Country": { "S": `${playerInfo.Country}` },
-			"Bonus": { "S": "noBonus" }
+			"WorkerID": playerInfo.WorkerID,
+			"Age": parseInt(playerInfo.Age),
+			"Gender": playerInfo.Gender,
+			"Education": playerInfo.Education,
+			"Country": playerInfo.Country,
+			"Bonus": "noBonus"
 		},
 		ConditionExpression: 'attribute_not_exists(WorkerID)'
 	}
 	return new Promise((resolve, reject) => {
-		dynamodb.putItem(param, (err, data) => {
+		docClient.put(param, (err, data) => {
 			if (err) reject(err);
 			else resolve(data);
 		})
 	});
 }
 
-let InsertInstanceData = function (instance_data) {
+/** Insert log and answers of player in this instance. */
+let InsertInstanceData = (instance_data) => {
 	const param = {
-		TableName: `Scenario_${instance_data.InstanceNumber}_data`,
+		TableName: `Scenarios_Data`,
 		Item: {
-			"WorkerID": { "S": `${instance_data.WorkerID}` },
-			"Log": { "M": `${instance_data.Log}` },
-			"QnsAns": { "M": `${instance_data.QnsAns}` }
+			WorkerID: instance_data.WorkerID,
+			InstanceIndex: parseInt(instance_data.InstanceIndex),
+			Log: instance_data.Log,
+			QnsAns: instance_data.QnsAns
 		},
 		ConditionExpression: 'attribute_not_exists(WorkerID)'
-	}
+	};
 
 	return new Promise((resolve, reject) => {
-		dynamodb.putItem(param, (err, data) => {
+		docClient.put(param, (err, data) => {
 			if (err) reject(err);
 			else resolve(data);
 		})
+	});
+}
+
+let GetQuestions = () => {
+	const params = {
+		TableName: 'Questions'
+	};
+	return new Promise((resolve, reject) => {
+		dynamodb.scan(params, (err, data) => {
+			if (err) reject(err);
+			else resolve(data);
+		});
 	});
 }
 
@@ -127,5 +158,6 @@ let InsertInstanceData = function (instance_data) {
 module.exports = {
 	CreateTables,
 	InsertPlayer,
-	InsertInstanceData
+	InsertInstanceData,
+	GetQuestions
 }; //, GetBonusCode };
